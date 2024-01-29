@@ -17,6 +17,10 @@
 void framebufferSizeCallback(GLFWwindow* window, int width, int height);
 GLFWwindow* initWindow(const char* title, int width, int height);
 void drawUI();
+void resetCamera(ew::Camera* camera, ew::CameraController* controller);
+
+
+
 
 struct Material {
 	float Ka = 1.0;
@@ -32,6 +36,11 @@ int screenHeight = 720;
 float prevFrameTime;
 float deltaTime;
 
+
+ew::CameraController cameraController;
+ew::Camera camera;
+
+
 int main() {
 	GLFWwindow* window = initWindow("Assignment 0", screenWidth, screenHeight);
 	glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
@@ -44,12 +53,11 @@ int main() {
 	ew::Transform monkeyTransform;
 
 
-	ew::CameraController cameraController;
 
 
 	GLuint brickTexture = ew::loadTexture("assets/brick_color.jpg");
 
-	ew::Camera camera;
+
 	camera.position = glm::vec3(0.0f, 0.0f, 5.0f);
 	camera.target = glm::vec3(0.0f, 0.0f, 0.0f); //Look at the center of the scene
 	camera.aspectRatio = (float)screenWidth / screenHeight;
@@ -96,13 +104,28 @@ int main() {
 
 		monkeyModel.draw();
 
-
-		drawUI();
 		cameraController.move(window, &camera, deltaTime);
+		drawUI();
+
+
+	
+
+		
+
+		//camera.position = glm::vec3(0, 0, 5.0f);
+		//camera.target = glm::vec3(0);
+		//cameraController.yaw = cameraController.pitch = 0;
 
 		glfwSwapBuffers(window);
 	}
 	printf("Shutting down...");
+}
+
+void resetCamera(ew::Camera* camera, ew::CameraController* controller) {
+	camera->position = glm::vec3(0, 0, 5.0f);
+	camera->target = glm::vec3(0);
+	controller->yaw = controller->pitch = 0;
+
 }
 
 
@@ -112,6 +135,11 @@ void drawUI() {
 	ImGui::NewFrame();
 
 	ImGui::Begin("Settings");
+	if (ImGui::Button("Reset Camera")) {
+		resetCamera(&camera, &cameraController);
+	}
+
+
 	if (ImGui::CollapsingHeader("Material")) {
 		ImGui::SliderFloat("AmbientK", &material.Ka, 0.0f, 1.0f);
 		ImGui::SliderFloat("DiffuseK", &material.Kd, 0.0f, 1.0f);
