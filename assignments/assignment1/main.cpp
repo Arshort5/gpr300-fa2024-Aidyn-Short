@@ -6,6 +6,7 @@
 #include <ew/transform.h>
 #include <ew/texture.h>
 
+#include<iostream>
 
 #include <ew/external/glad.h>
 #include <ew/cameraController.h>
@@ -13,6 +14,9 @@
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
+
+#include <Aidyn/Framebuffer.h>
+
 
 void framebufferSizeCallback(GLFWwindow* window, int width, int height);
 GLFWwindow* initWindow(const char* title, int width, int height);
@@ -35,7 +39,7 @@ int screenWidth = 1080;
 int screenHeight = 720;
 float prevFrameTime;
 float deltaTime;
-
+int activeShader = 0;
 
 ew::CameraController cameraController;
 ew::Camera camera;
@@ -46,7 +50,34 @@ int main() {
 	glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
 
 
+	aidyn::Framebuffer framebuffer = aidyn::createFramebuffer(screenWidth, screenHeight, GL_RGB16F);
+
+	GLenum fboStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+
+	if (fboStatus != GL_FRAMEBUFFER_COMPLETE)
+	{
+		printf("Not complete");
+	}
+
+	unsigned int dummyVAO;
+	glCreateVertexArrays(1, &dummyVAO);
+
+
 	ew::Shader shader = ew::Shader("assets/lit.vert", "assets/lit.frag");
+
+	ew::Shader postProcessShader = ew::Shader("assets/nothingPost.vert", "assets/nothingPost.frag");
+
+	ew::Shader inversionShader = ew::Shader("assets/inversion.vert", "assets/inversion.frag");
+
+	ew::Shader grayScaleShader = ew::Shader("assets/grayscale.vert", "assets/grayscale.frag");
+
+	ew::Shader edgeDetectShader = ew::Shader("assets/edge.vert", "assets/edge.frag");
+
+	ew::Shader blurShader = ew::Shader("assets/blur.vert", "assets/blur.frag");
+
+	ew::Shader sharpenShader = ew::Shader("assets/sharpen.vert", "assets/sharpen.frag");
+
+
 
 	ew::Model monkeyModel = ew::Model("assets/suzanne.obj");
 
@@ -69,11 +100,46 @@ int main() {
 
 
 	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, brickTexture);
 
 
 	shader.use();
 	shader.setInt("_MainTex", 0);
+
+
+
+
+	float quadVertices[] = { // vertex attributes for a quad that fills the entire screen in Normalized Device Coordinates.
+		// positions   // texCoords
+		-1.0f,  1.0f,  0.0f, 1.0f,
+		-1.0f, -1.0f,  0.0f, 0.0f,
+		 1.0f, -1.0f,  1.0f, 0.0f,
+
+		-1.0f,  1.0f,  0.0f, 1.0f,
+		 1.0f, -1.0f,  1.0f, 0.0f,
+		 1.0f,  1.0f,  1.0f, 1.0f
+	};
+
+
+	unsigned int quadVAO, quadVBO;
+	glGenVertexArrays(1, &quadVAO);
+	glGenBuffers(1, &quadVBO);
+	glBindVertexArray(quadVAO);
+	glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+
+
+
+
+
+
+
+
+
+
 
 
 	while (!glfwWindowShouldClose(window)) {
@@ -84,10 +150,25 @@ int main() {
 		prevFrameTime = time;
 
 
+
+		cameraController.move(window, &camera, deltaTime);
+
 		//RENDER
-		glClearColor(0.6f,0.8f,0.92f,1.0f);
+		
+		glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.fbo);
+		
+		glEnable(GL_DEPTH_TEST);
+
+		glClearColor(0.6f, 0.8f, 0.92f, 1.0f);
+		glViewport(0, 0, screenWidth, screenHeight);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+
+
+
+
+	
+		glBindTexture(GL_TEXTURE_2D, brickTexture);
 
 		monkeyTransform.rotation = glm::rotate(monkeyTransform.rotation, deltaTime, glm::vec3(0.0, 1.0, 0.0));
 
@@ -104,22 +185,56 @@ int main() {
 
 		monkeyModel.draw();
 
-		cameraController.move(window, &camera, deltaTime);
-		drawUI();
-
-
-	
-
+		
 		
 
-		//camera.position = glm::vec3(0, 0, 5.0f);
-		//camera.target = glm::vec3(0);
-		//cameraController.yaw = cameraController.pitch = 0;
 
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glDisable(GL_DEPTH_TEST);
+
+
+		
+		glClear(GL_COLOR_BUFFER_BIT );
+		
+
+		switch (activeShader)
+		{
+		case 0:
+			postProcessShader.use();
+			break;
+		case 1:
+			inversionShader.use();
+			break;
+		case 2:
+			grayScaleShader.use();
+			break;
+		case 3:
+			blurShader.use();
+			break;
+		case 4:
+			sharpenShader.use();
+			break;
+		case 5:
+			edgeDetectShader.use();
+			break;
+		default:
+			postProcessShader.use();
+			break;
+		}
+
+		
+		glBindVertexArray(quadVAO);
+		glBindTexture(GL_TEXTURE_2D, framebuffer.colorBuffer);
+
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+
+		drawUI();
 		glfwSwapBuffers(window);
 	}
 	printf("Shutting down...");
 }
+
+
 
 void resetCamera(ew::Camera* camera, ew::CameraController* controller) {
 	camera->position = glm::vec3(0, 0, 5.0f);
@@ -146,8 +261,35 @@ void drawUI() {
 		ImGui::SliderFloat("SpecularK", &material.Ks, 0.0f, 1.0f);
 		ImGui::SliderFloat("Shininess", &material.Shininess, 2.0f, 1024.0f);
 	}
+	
+	if (ImGui::CollapsingHeader("Effects"))
+	{
+		if (ImGui::Button("Default")) {
+			activeShader = 0;
+			std::cout << activeShader;
+		}
+		else if (ImGui::Button("Inversion")) {
+			activeShader = 1;
+			std::cout << activeShader;
+		}
+		else if (ImGui::Button("Gray scale")) {
+			activeShader = 2;
+			std::cout << activeShader;
+		}
+		else if (ImGui::Button("Blur")) {
+			activeShader = 3;
+			std::cout << activeShader;
+		}
+		else if (ImGui::Button("Sharpen")) {
+			activeShader = 4;
+			std::cout << activeShader;
+		}
+		else if (ImGui::Button("Edge detection")) {
+			activeShader = 5;
+			std::cout << activeShader;
+		}
+	}
 
-	ImGui::Text("Add Controls Here!");
 
 	ImGui::End();
 

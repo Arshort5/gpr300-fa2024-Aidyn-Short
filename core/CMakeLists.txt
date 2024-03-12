@@ -15,7 +15,7 @@ set(CORE_INC_DIR
  CACHE PATH "CORE INCLUDE SOURCE PATH"
 )
 
-add_library(core STATIC ${CORE_SRC} ${CORE_INC})
+add_library(core STATIC ${CORE_SRC} ${CORE_INC} "Aidyn/Framebuffer.cpp" "Aidyn/Framebuffer.h")
 
 find_package(OpenGL REQUIRED)
 

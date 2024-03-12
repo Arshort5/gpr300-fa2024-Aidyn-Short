@@ -112,10 +112,6 @@ int main() {
 
 		
 
-		//camera.position = glm::vec3(0, 0, 5.0f);
-		//camera.target = glm::vec3(0);
-		//cameraController.yaw = cameraController.pitch = 0;
-
 		glfwSwapBuffers(window);
 	}
 	printf("Shutting down...");
