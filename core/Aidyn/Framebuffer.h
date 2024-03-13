@@ -6,6 +6,8 @@ namespace aidyn {
 		unsigned int fbo;
 		unsigned int colorBuffer;
 		unsigned int depthBuffer;
+		unsigned int width;
+		unsigned int height;
 	};
 
 	Framebuffer createFramebufferDepth(unsigned int width, unsigned int height, int colorFormat)
@@ -13,14 +15,17 @@ namespace aidyn {
 		Framebuffer frameBuffer;
 
 		//Create fbo
-		glCreateBuffers(1, &frameBuffer.fbo);
+		glCreateFramebuffers(1, &frameBuffer.fbo);
 		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer.fbo);
 
 		//create and bind colorbuffer
 		glGenTextures(1, &frameBuffer.colorBuffer);
 		glBindTexture(GL_TEXTURE_2D, frameBuffer.colorBuffer);
 		glTexStorage2D(GL_TEXTURE_2D, 1, colorFormat, width, height);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,GL_TEXTURE_2D, frameBuffer.colorBuffer, 0);
+		glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, frameBuffer.colorBuffer, 0);
+
+
+
 
 		//create and bind depth buffer
 		glGenTextures(1, &frameBuffer.depthBuffer);
@@ -59,4 +64,41 @@ namespace aidyn {
 		return frameBuffer;
 
 	}
+
+	Framebuffer createShadowBuffer(unsigned int width, unsigned int height)
+	{
+		Framebuffer frameBuffer;
+
+		//Create fbo
+		glCreateFramebuffers(1, &frameBuffer.fbo);
+		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer.fbo);
+
+		//create and bind depth buffer
+		glGenTextures(1, &frameBuffer.depthBuffer);
+		glBindTexture(GL_TEXTURE_2D, frameBuffer.depthBuffer);
+		glTexStorage2D(GL_TEXTURE_2D, 1, GL_DEPTH_COMPONENT16, width, height);
+
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+		float borderColor[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+		glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer.fbo);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, frameBuffer.depthBuffer, 0);
+
+		glDrawBuffer(GL_NONE);
+		glReadBuffer(GL_NONE);
+
+		frameBuffer.width = width;
+		frameBuffer.height = height;
+
+		return frameBuffer;
+
+	}
+
+
+
+
+
 }
