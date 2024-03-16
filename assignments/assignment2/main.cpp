@@ -26,7 +26,9 @@ void renderScene(const ew::Shader& shader);
 
 float lightDirection[] = { 0,0,0 };
 float fustrumHeight = 10;
-float near_plane = 1.0f, far_plane = 7.5f;
+float near_plane = 1.0f, far_plane = 20.0f;
+float minBias = 0.005f;
+float maxBias = 0.015f;
 struct Material {
 	float Ka = 1.0;
 	float Kd = 0.5;
@@ -67,7 +69,7 @@ int main() {
 
 	ew::Shader shader = ew::Shader("assets/lit.vert", "assets/lit.frag");
 
-	ew::Shader postProcessShader = ew::Shader("assets/nothingPost.vert", "assets/nothingPost.frag");
+	//ew::Shader postProcessShader = ew::Shader("assets/nothingPost.vert", "assets/nothingPost.frag");
 
 	ew::Shader depthShader = ew::Shader("assets/depthOnly.vert", "assets/depthOnly.frag");
 	
@@ -150,10 +152,11 @@ int main() {
 		glm::mat4 lightProjection, lightView, lightSpaceMatrix;
 
 
-		lightProjection = glm::ortho(-10.0f, 10.0f, -10.0f, 10.0f, near_plane, far_plane);
-		lightView = lightCamera.viewMatrix(); // glm::lookAt(lightPos, glm::vec3(0.0f), glm::vec3(0.0, 1.0, 0.0));
+		lightProjection = glm::ortho(-lightCamera.orthoHeight, lightCamera.orthoHeight, -lightCamera.orthoHeight, lightCamera.orthoHeight, near_plane, far_plane);
+		lightView = lightCamera.viewMatrix();
 		lightSpaceMatrix = lightProjection * lightView;
 
+		glCullFace(GL_FRONT);
 		depthShader.use();
 		depthShader.setMat4("_ViewProjection", lightSpaceMatrix);
 
@@ -171,7 +174,7 @@ int main() {
 	
 
 
-
+		glCullFace(GL_BACK);
 		//normal render
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
@@ -187,11 +190,14 @@ int main() {
 		shader.setFloat("_Material.Ka", material.Ka);
 		shader.setFloat("_Material.Kd", material.Kd);
 		shader.setFloat("_Material.Ks", material.Ks);
-		shader.setVec3("_LightDirection", lightCamera.target - lightCamera.position);
+		shader.setVec3("_LightDirection", glm::normalize(lightCamera.target - lightCamera.position));
 		shader.setFloat("_Material.Shininess", material.Shininess);
 		shader.setMat4("_LightViewProj", lightSpaceMatrix);
+		shader.setFloat("minBias", minBias);
+		shader.setFloat("maxBias", maxBias);
 		glActiveTexture(GL_TEXTURE1);
 		glBindTexture(GL_TEXTURE_2D, shadowBuffer.depthBuffer);
+		shader.setInt("_ShadowMap", 1);
 
 		renderScene(shader);
 
@@ -203,7 +209,7 @@ int main() {
 
 	
 
-		drawUI();
+		drawUI();	
 		glfwSwapBuffers(window);
 	}
 	printf("Shutting down...");
@@ -251,8 +257,9 @@ void drawUI() {
 	if (ImGui::CollapsingHeader("Light:"))
 	{
 		ImGui::DragFloat3("Direction", lightDirection, .01f, -2, 2);
-		ImGui::SliderFloat("farPlane", &far_plane, 0.0f, 100.0f);
-		ImGui::SliderFloat("nearPlane",&near_plane, 0.0f, 100.0f);
+		ImGui::SliderFloat("Shadow Cam Size", &fustrumHeight, 1.0f, 100.0f);
+		ImGui::SliderFloat("Shadow Min Bias",&minBias, 0.0001f, 0.1f);
+		ImGui::SliderFloat("Shadow Max Bias", &maxBias, 0.0001f, 0.1f);
 	}
 
 	if (ImGui::CollapsingHeader("Material")) {
@@ -274,7 +281,7 @@ void drawUI() {
 	ImVec2 windowSize = ImGui::GetWindowSize();
 	//Invert 0-1 V to flip vertically for ImGui display
 	//shadowMap is the texture2D handle
-	ImGui::Image((ImTextureID)shadowBuffer.fbo, windowSize, ImVec2(0, 1), ImVec2(1, 0));
+	ImGui::Image((ImTextureID)shadowBuffer.depthBuffer, windowSize, ImVec2(0, 1), ImVec2(1, 0));
 	ImGui::EndChild();
 	ImGui::End();
 
