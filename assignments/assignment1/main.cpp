@@ -224,7 +224,7 @@ int main() {
 
 		
 		glBindVertexArray(quadVAO);
-		glBindTexture(GL_TEXTURE_2D, framebuffer.colorBuffer);
+		glBindTexture(GL_TEXTURE_2D, framebuffer.colorBuffer[0]);
 
 		glDrawArrays(GL_TRIANGLES, 0, 6);
 

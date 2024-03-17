@@ -52,12 +52,73 @@ ew::Camera lightCamera;
 aidyn::Framebuffer shadowBuffer;
 
 
-aidyn::Framebuffer GBuffer;
 
 
 
+struct Framebuffer {
+	unsigned int fbo;
+	unsigned int colorBuffers[3];
+	unsigned int depthBuffer;
+	unsigned int width;
+	unsigned int height;
+}framebuffer;
+
+Framebuffer createGBuffer(unsigned int width, unsigned int height) {
+	Framebuffer framebuffer;
+	framebuffer.width = width;
+	framebuffer.height = height;
+
+	glCreateFramebuffers(1, &framebuffer.fbo);
+	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.fbo);
+
+	int formats[3] = {
+		GL_RGB32F, //0 = World Position 
+		GL_RGB16F, //1 = World Normal
+		GL_RGB16F  //2 = Albedo
+	};
+	//Create 3 color textures
+	for (size_t i = 0; i < 3; i++)
+	{
+		glGenTextures(1, &framebuffer.colorBuffers[i]);
+		glBindTexture(GL_TEXTURE_2D, framebuffer.colorBuffers[i]);
+		glTexStorage2D(GL_TEXTURE_2D, 1, formats[i], width, height);
+		//Clamp to border so we don't wrap when sampling for post processing
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		//Attach each texture to a different slot.
+	//GL_COLOR_ATTACHMENT0 + 1 = GL_COLOR_ATTACHMENT1, etc
+		glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, framebuffer.colorBuffers[i], 0);
+	}
+	//Explicitly tell OpenGL which color attachments we will draw to
+	const GLenum drawBuffers[3] = {
+			GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2
+	};
+	glDrawBuffers(3, drawBuffers);
+	//TODO: Add texture2D depth buffer
+
+	glGenRenderbuffers(1, &framebuffer.depthBuffer);
+	glBindRenderbuffer(GL_RENDERBUFFER, framebuffer.depthBuffer);
+	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, framebuffer.depthBuffer);
+	//TODO: Check for completeness
+
+	GLenum fboStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+
+	if (fboStatus != GL_FRAMEBUFFER_COMPLETE)
+	{
+		printf("Not complete");
+	}
 
 
+	//Clean up global state
+
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	return framebuffer;
+}
+
+Framebuffer GBuffer;
 
 
 int main() {
@@ -66,19 +127,18 @@ int main() {
 
 	shadowBuffer = aidyn::createShadowBuffer(screenWidth, screenHeight);
 
-	GBuffer = aidyn::createGBuffer(screenWidth, screenHeight);
+	GBuffer = createGBuffer(screenWidth, screenHeight);
 
-
+	aidyn::Framebuffer frameBuffer = aidyn::createFramebuffer(screenWidth, screenHeight,GL_RGB16F);
 
 
 	ew::Shader shader = ew::Shader("assets/lit.vert", "assets/lit.frag");
-
-	//ew::Shader postProcessShader = ew::Shader("assets/nothingPost.vert", "assets/nothingPost.frag");
 
 	ew::Shader depthShader = ew::Shader("assets/depthOnly.vert", "assets/depthOnly.frag");
 	
 	ew::Shader geometryShader = ew::Shader("assets/lit.vert", "assets/geometryPass.frag");
 
+	ew::Shader defferedShader = ew::Shader("assets/defferedLit.vert", "assets/defferedLit.frag");
 
 
 	GLuint brickTexture = ew::loadTexture("assets/brick_color.jpg");
@@ -137,6 +197,8 @@ int main() {
 	lightCamera.aspectRatio = 1;
 	lightCamera.target = glm::vec3(0, 0, 0);
 
+	unsigned int dummyVAO;
+	glCreateVertexArrays(1, &dummyVAO);
 
 	while (!glfwWindowShouldClose(window)) {
 		glfwPollEvents();
@@ -171,7 +233,7 @@ int main() {
 		depthShader.setMat4("_ViewProjection", lightSpaceMatrix);
 
 
-		//RENDER
+		//RENDER Shadows 
 
 		glViewport(0, 0, shadowBuffer.width, shadowBuffer.height);
 		glBindFramebuffer(GL_FRAMEBUFFER, shadowBuffer.fbo);
@@ -181,14 +243,27 @@ int main() {
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, brickTexture);
 
+		renderScene(depthShader);
+
+
+
+
 		//GBuffer render
+
 
 		glBindFramebuffer(GL_FRAMEBUFFER, GBuffer.fbo);
 		glViewport(0, 0, GBuffer.width, GBuffer.height);
 		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		glCullFace(GL_BACK);
+
 		geometryShader.use();
-		depthShader.setMat4("_ViewProjection", camera.projectionMatrix() * camera.viewMatrix());
+		geometryShader.setMat4("_ViewProjection", camera.projectionMatrix() * camera.viewMatrix());
+
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, brickTexture);
+
+
 		geometryShader.setInt("_MainTex", 0);
 		renderScene(geometryShader);
 
@@ -197,15 +272,45 @@ int main() {
 
 
 
-		//normal render
+		//Lighting render
+
+		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer.fbo);
+		glViewport(0, 0, frameBuffer.width, frameBuffer.height);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		
+
+		defferedShader.use();
+
+	
+		//defferedShader.setMat4("_ViewProjection", camera.projectionMatrix() * camera.viewMatrix());
+		defferedShader.setVec3("_EyePos", camera.position);
+		defferedShader.setFloat("_Material.Ka", material.Ka);
+		defferedShader.setFloat("_Material.Kd", material.Kd);
+		defferedShader.setFloat("_Material.Ks", material.Ks);
+		defferedShader.setVec3("_LightDirection", glm::normalize(lightCamera.target - lightCamera.position));
+		defferedShader.setFloat("_Material.Shininess", material.Shininess);
+		defferedShader.setMat4("_LightViewProj", lightSpaceMatrix);
+		defferedShader.setFloat("minBias", minBias);
+		defferedShader.setFloat("maxBias", maxBias);
+
+		glBindTextureUnit(0, GBuffer.colorBuffers[0]);
+		glBindTextureUnit(1, GBuffer.colorBuffers[1]);
+		glBindTextureUnit(2, GBuffer.colorBuffers[2]);
+		glBindTextureUnit(3, shadowBuffer.depthBuffer);
+
+		//renderScene(defferedShader);
+
+
+	//normal render
+
+/*
+
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 		glViewport(0, 0, screenWidth, screenHeight);
 		glClearColor(0.6f, 0.8f, 0.92f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
 		
-
 		shader.use();
 		shader.setMat4("_ViewProjection", camera.projectionMatrix() * camera.viewMatrix());
 		shader.setVec3("_EyePos", camera.position);
@@ -220,9 +325,11 @@ int main() {
 		glActiveTexture(GL_TEXTURE1);
 		glBindTexture(GL_TEXTURE_2D, shadowBuffer.depthBuffer);
 		shader.setInt("_ShadowMap", 1);
-
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, brickTexture);
 		renderScene(shader);
 
+		*/
 		
 
 		
@@ -240,17 +347,25 @@ int main() {
 
 void renderScene(const ew::Shader &shader) 
 {
-	ew::Model monkeyModel = ew::Model("assets/suzanne.obj");
+	ew::Mesh boxMesh = ew::Mesh(ew::createCube(1));
 
 
-	ew::Mesh planeMesh = ew::Mesh(ew::createPlane(10, 10, 1));
-	ew::Transform transform;
-
-	shader.setMat4("_Model", transform.modelMatrix());
-	monkeyModel.draw();
-	transform.position = glm::vec3(0, -1, 0);
-	shader.setMat4("_Model", transform.modelMatrix());
+	ew::Mesh planeMesh = ew::Mesh(ew::createPlane(50, 50, 5));
+	ew::Transform cubeTransform;
+	cubeTransform.position = glm::vec3(0, -1, 0);
+	shader.setMat4("_Model", cubeTransform.modelMatrix());
 	planeMesh.draw();
+	
+	for (int i = -6; i < 6; i++)
+	{
+		for (int j = -6; j < 6; j++)
+		{
+			cubeTransform.position = glm::vec3(i * 4, 1, j * 4);
+			shader.setMat4("_Model", cubeTransform.modelMatrix());
+			boxMesh.draw();
+
+		}
+	}
 
 
 
@@ -302,7 +417,7 @@ void drawUI() {
 		ImVec2 texSize = ImVec2(GBuffer.width / 4, GBuffer.height / 4);
 		for (size_t i = 0; i < 3; i++)
 		{
-			ImGui::Image((ImTextureID)GBuffer.colorBuffer[i], texSize, ImVec2(0, 1), ImVec2(1, 0));
+			ImGui::Image((ImTextureID)GBuffer.colorBuffers[i], texSize, ImVec2(0, 1), ImVec2(1, 0));
 		}
 		ImGui::End();
 
