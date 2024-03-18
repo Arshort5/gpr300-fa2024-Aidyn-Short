@@ -271,17 +271,28 @@ int main() {
 
 
 
-
 		//Lighting render
 
-		glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer.fbo);
-		glViewport(0, 0, frameBuffer.width, frameBuffer.height);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glViewport(0, 0, screenWidth, screenHeight);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		
 
 		defferedShader.use();
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, GBuffer.colorBuffers[0]);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, GBuffer.colorBuffers[1]);
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, GBuffer.colorBuffers[2]);
+		glActiveTexture(GL_TEXTURE3);
+		glBindTexture(GL_TEXTURE_2D, shadowBuffer.depthBuffer);
 
-	
+		defferedShader.setInt("gPosition", 0);
+		defferedShader.setInt("gNormal", 1);
+		defferedShader.setInt("gAlbedoSpec", 2);
+		defferedShader.setInt("_ShadowMap", 3);
+
 		//defferedShader.setMat4("_ViewProjection", camera.projectionMatrix() * camera.viewMatrix());
 		defferedShader.setVec3("_EyePos", camera.position);
 		defferedShader.setFloat("_Material.Ka", material.Ka);
@@ -293,17 +304,22 @@ int main() {
 		defferedShader.setFloat("minBias", minBias);
 		defferedShader.setFloat("maxBias", maxBias);
 
-		glBindTextureUnit(0, GBuffer.colorBuffers[0]);
-		glBindTextureUnit(1, GBuffer.colorBuffers[1]);
-		glBindTextureUnit(2, GBuffer.colorBuffers[2]);
-		glBindTextureUnit(3, shadowBuffer.depthBuffer);
+
+		glBindVertexArray(dummyVAO);
+		glDrawArrays(GL_TRIANGLES, 0, 3);
+
+		glBindVertexArray(0);
+
+
+
+
 
 		//renderScene(defferedShader);
-
-
+		
+/*
 	//normal render
 
-/*
+
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
@@ -329,11 +345,11 @@ int main() {
 		glBindTexture(GL_TEXTURE_2D, brickTexture);
 		renderScene(shader);
 
+		
+		
+
+		
 		*/
-		
-
-		
-
 
 
 	
@@ -419,6 +435,7 @@ void drawUI() {
 		{
 			ImGui::Image((ImTextureID)GBuffer.colorBuffers[i], texSize, ImVec2(0, 1), ImVec2(1, 0));
 		}
+		ImGui::Image((ImTextureID)shadowBuffer.depthBuffer, texSize, ImVec2(0, 1), ImVec2(1, 0));
 		ImGui::End();
 
 	}

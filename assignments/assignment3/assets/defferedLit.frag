@@ -7,7 +7,8 @@ in Surface{
 }fs_in;
 
 
- vec4 lightSpacePos;
+vec4 lightSpacePos;
+uniform mat4 _LightViewProj;
 
 in vec2 UV;
 
@@ -31,15 +32,9 @@ struct Material{
 };
 uniform Material _Material;
 
-
 uniform layout(binding = 0) sampler2D _gPositions;
-
 uniform layout(binding = 1) sampler2D _gNormals;
-
 uniform layout(binding = 2) sampler2D _gAlbedo;
-
-
-
 
 float calcShadow(sampler2D shadowMap, vec4 lightSpacePos,float bias)
 {
@@ -105,7 +100,7 @@ void main(){
 
 
 	//lightColor+=_AmbientColor * _Material.Ka;
-
+	lightSpacePos = _LightViewProj * vec4(worldPos, 1);
 	float bias = max(maxBias * (1.0 - dot(normal,toLight)),minBias);
 	float shadow = calcShadow(_ShadowMap, lightSpacePos, bias);
 
