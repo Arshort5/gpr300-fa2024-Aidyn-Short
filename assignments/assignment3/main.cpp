@@ -16,7 +16,7 @@
 #include <imgui_impl_opengl3.h>
 
 #include <Aidyn/Framebuffer.h>
-
+#include <iostream>
 
 void framebufferSizeCallback(GLFWwindow* window, int width, int height);
 GLFWwindow* initWindow(const char* title, int width, int height);
@@ -52,8 +52,15 @@ ew::Camera lightCamera;
 aidyn::Framebuffer shadowBuffer;
 
 
+struct PointLight
+{
+	glm::vec3 position;
+	float radius;
+	glm::vec4 color;
+};
 
-
+const int MAX_POINT_LIGHTS = 64;
+PointLight pointLights[MAX_POINT_LIGHTS];
 
 struct Framebuffer {
 	unsigned int fbo;
@@ -140,9 +147,24 @@ int main() {
 
 	ew::Shader defferedShader = ew::Shader("assets/defferedLit.vert", "assets/defferedLit.frag");
 
+	ew::Mesh sphereMesh = ew::Mesh(ew::createSphere(1.0f, 8));
+
+	ew::Shader lightOrbShader = ew::Shader("assets/lightOrb.vert", "assets/lightOrb.frag");
 
 	GLuint brickTexture = ew::loadTexture("assets/brick_color.jpg");
 
+	int index = 0;
+	for (int x = 0; x < 8; x++)
+	{
+		for (int y = 0; y < 8; y++)
+		{
+			pointLights[index].position = glm::vec3(x * 6.25 - 25, 1, y * 6.25 - 25);
+			pointLights[index].radius = 3.0;
+			pointLights[index].color = glm::vec4(rand() % 2, rand() % 2, rand() % 2, 1);
+
+			index++;
+		}
+	}
 
 	camera.position = glm::vec3(0.0f, 0.0f, 5.0f);
 	camera.target = glm::vec3(0.0f, 0.0f, 0.0f); //Look at the center of the scene
@@ -304,14 +326,39 @@ int main() {
 		defferedShader.setFloat("minBias", minBias);
 		defferedShader.setFloat("maxBias", maxBias);
 
+		for (int i = 0; i < MAX_POINT_LIGHTS; i++) {
+			//Creates prefix "_PointLights[0]." etc
+			std::string prefix = "_PointLights[" + std::to_string(i) + "].";
+			defferedShader.setVec3(prefix + "position", pointLights[i].position);
+			defferedShader.setFloat(prefix + "radius", pointLights[i].radius);
+			defferedShader.setVec4(prefix + "color", pointLights[i].color);
+		}
+
+
 
 		glBindVertexArray(dummyVAO);
 		glDrawArrays(GL_TRIANGLES, 0, 3);
 
 		glBindVertexArray(0);
 
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, GBuffer.fbo);
+		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+		glBlitFramebuffer(
+			0, 0, screenWidth, screenHeight, 0, 0, screenWidth, screenHeight, GL_DEPTH_BUFFER_BIT, GL_NEAREST
+		);
 
+		lightOrbShader.use();
+		lightOrbShader.setMat4("_ViewProjection", camera.projectionMatrix() * camera.viewMatrix());
+		for (int i = 0; i < MAX_POINT_LIGHTS; i++)
+		{
+			glm::mat4 m = glm::mat4(1.0f);
+			m = glm::translate(m, pointLights[i].position);
+			m = glm::scale(m, glm::vec3(0.2f)); //Whatever radius you want
 
+			lightOrbShader.setMat4("_Model", m);
+			lightOrbShader.setVec3("_Color", pointLights[i].color);
+			sphereMesh.draw();
+		}
 
 
 		//renderScene(defferedShader);
