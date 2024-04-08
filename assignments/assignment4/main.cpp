@@ -6,7 +6,6 @@
 #include <ew/transform.h>
 #include <ew/texture.h>
 
-
 #include <ew/external/glad.h>
 #include <ew/cameraController.h>
 #include <GLFW/glfw3.h>
@@ -14,20 +13,36 @@
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
 
+struct Node;
+
 void framebufferSizeCallback(GLFWwindow* window, int width, int height);
 GLFWwindow* initWindow(const char* title, int width, int height);
 void drawUI();
 void resetCamera(ew::Camera* camera, ew::CameraController* controller);
+void SolveFKRecursive(Node& node);
+
 
 
 struct Node {
-	glm::mat4 localTransform;
-	glm::mat4 globalTransform;
-	Node* parent;
-	unsigned int parentIndex;
+	ew::Transform localTransform;
+	glm::mat4 globalTransform = localTransform.modelMatrix();
+	Node* parent = NULL;
+	std::vector<Node*> children;
 };
 
-
+void SolveFKRecursive(Node& node){
+	if (node.parent == NULL)
+	{
+		node.globalTransform = node.localTransform.modelMatrix();
+	}	
+	else {
+		node.globalTransform =  node.parent->globalTransform * node.localTransform.modelMatrix();
+	}
+	for each (Node* child in node.children)
+	{
+		SolveFKRecursive(*child);
+	}
+}
 
 struct Material {
 	float Ka = 1.0;
@@ -49,6 +64,11 @@ ew::Camera camera;
 
 
 int main() {
+
+
+	
+
+
 	GLFWwindow* window = initWindow("Assignment 0", screenWidth, screenHeight);
 	glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
 
@@ -57,10 +77,58 @@ int main() {
 
 	ew::Model monkeyModel = ew::Model("assets/suzanne.obj");
 
-	ew::Transform monkeyTransform;
+	Node pivotPoint;
+
+	Node body;
+	
+
+	pivotPoint.children.push_back(&body);
+	body.parent = &pivotPoint;
+
+	Node armLeft;
 
 
+	armLeft.localTransform.scale = glm::vec3(.5f, .5f, .5f);
 
+	Node armRight;
+	armRight.localTransform.scale = glm::vec3(.5f, .5f, .5f);
+
+	Node head;
+	head.localTransform.scale = glm::vec3(.5f, .5f, .5f);
+
+	body.children.push_back(&armLeft);
+	armLeft.parent = &body;
+
+	body.children.push_back(&armRight);
+	armRight.parent = &body;
+
+	body.children.push_back(&head);
+	head.parent = &body;
+
+	Node elbowLeft;
+	Node elbowRight;
+
+	
+	elbowLeft.localTransform.scale = glm::vec3(.75f, .75f, .75f);
+
+	elbowRight.localTransform.scale = glm::vec3(.75f, .75f, .75f);
+
+	armLeft.children.push_back(&elbowLeft);
+	armRight.children.push_back(&elbowRight);
+	elbowLeft.parent = &armLeft;
+	elbowRight.parent = &armRight;
+
+	Node wristLeft;
+	Node wristRight;
+	
+	elbowLeft.children.push_back(&wristLeft);
+	elbowRight.children.push_back(&wristRight);
+	wristLeft.parent = &elbowLeft;
+	wristRight.parent = &elbowRight;
+
+
+	wristLeft.localTransform.scale = glm::vec3(.75f, .75f, .75f);
+	wristRight.localTransform.scale = glm::vec3(.75f, .75f, .75f);
 
 	GLuint brickTexture = ew::loadTexture("assets/brick_color.jpg");
 
@@ -96,10 +164,29 @@ int main() {
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		monkeyTransform.rotation = glm::rotate(monkeyTransform.rotation, deltaTime, glm::vec3(0.0, 1.0, 0.0));
+
+		pivotPoint.localTransform.rotation = glm::vec3(0, sin(time / 200) * 360,0);
+
+		body.localTransform.position = glm::vec3(-7, sin(time) *5, 0);
+
+
+
+		head.localTransform.position =  glm::vec3(0, 1.2 + sin(time)/4, .25f);
+		armLeft.localTransform.position = glm::vec3(-1.5 - sin(time *2) / 4, 0, 0);
+		armRight.localTransform.position = glm::vec3(1.5 + sin(time *2) / 4, 0, 0);
+		elbowLeft.localTransform.position = glm::vec3(-1 - sin(time * 2) / 4, 0, 0);
+		elbowRight.localTransform.position = glm::vec3(1 + sin(time * 2) / 4, 0, 0);
+		wristLeft.localTransform.position = glm::vec3(-.75, 1 + sin(time * 2) / 4, 0);
+		wristRight.localTransform.position = glm::vec3(.75, 1 + sin(time * 2) / 4, 0);
+
+		armLeft.localTransform.rotation = glm::vec3(sin(time / 200) * 360,0 , 0);
+		armRight.localTransform.rotation = glm::vec3(sin(time / 200) * 360, 0, 0);
+
+
+		SolveFKRecursive(pivotPoint);
 
 		shader.use();
-		shader.setMat4("_Model", monkeyTransform.modelMatrix());
+		shader.setMat4("_Model", body.globalTransform);
 		shader.setMat4("_ViewProjection", camera.projectionMatrix() * camera.viewMatrix());
 		shader.setVec3("_EyePos", camera.position);
 		shader.setFloat("_Material.Ka", material.Ka);
@@ -110,6 +197,28 @@ int main() {
 
 
 		monkeyModel.draw();
+		shader.setMat4("_Model", armLeft.globalTransform);
+
+		monkeyModel.draw();
+		shader.setMat4("_Model", armRight.globalTransform);
+
+		monkeyModel.draw();
+		shader.setMat4("_Model", elbowLeft.globalTransform);
+
+		monkeyModel.draw();
+		shader.setMat4("_Model", elbowRight.globalTransform);
+
+		monkeyModel.draw();
+		shader.setMat4("_Model", wristLeft.globalTransform);
+
+		monkeyModel.draw();
+		shader.setMat4("_Model", wristRight.globalTransform);
+
+		monkeyModel.draw();
+
+		shader.setMat4("_Model", head.globalTransform);
+		monkeyModel.draw();
+
 
 		cameraController.move(window, &camera, deltaTime);
 		drawUI();
@@ -132,23 +241,7 @@ void resetCamera(ew::Camera* camera, ew::CameraController* controller) {
 }
 
 
-void SolveFKRecursive(Node node) {
-	if (node.parent == NULL)
-	{
-		node.globalTransform = node.localTransform;
-	}
-	else
-	{
 
-	}
-
-
-	for each (Node child in node.children)
-	{
-
-	}
-
-}
 
 
 void drawUI() {
